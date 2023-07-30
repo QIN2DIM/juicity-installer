@@ -196,9 +196,9 @@ class CertBot:
             for k in os.listdir(p):
                 k_full = p.joinpath(k)
                 if (
-                        not p.joinpath(self._domain).exists()
-                        and k.startswith(f"{self._domain}-")
-                        and k_full.is_dir()
+                    not p.joinpath(self._domain).exists()
+                    and k.startswith(f"{self._domain}-")
+                    and k_full.is_dir()
                 ):
                     shutil.rmtree(k_full, ignore_errors=True)
 
@@ -374,12 +374,14 @@ class ServerConfig:
 
     @classmethod
     def from_automation(
-            cls, users: List[User] | User, path_fullchain: str, path_privkey: str, server_port: int
+        cls, users: List[User] | User, path_fullchain: str, path_privkey: str, server_port: int
     ):
         if not isinstance(users, list):
             users = [users]
         users = {user.username: user.password for user in users}
-        return cls(listen=server_port, certificate=path_fullchain, private_key=path_privkey, users=users)
+        return cls(
+            listen=server_port, certificate=path_fullchain, private_key=path_privkey, users=users
+        )
 
     def to_json(self, sp: Path):
         sp.write_text(json.dumps(self.__dict__, indent=4, ensure_ascii=True))
@@ -393,6 +395,7 @@ class NekoRayConfig:
     Config template of juicity-client
     Apply on the NekoRay(v3.8+)
     """
+
     listen: str
     server: str
     uuid: str
@@ -404,7 +407,12 @@ class NekoRayConfig:
 
     @classmethod
     def from_server(
-            cls, user: User, server_config: ServerConfig, server_addr: str, server_port: int, server_ip: str
+        cls,
+        user: User,
+        server_config: ServerConfig,
+        server_addr: str,
+        server_port: int,
+        server_ip: str,
     ):
         return cls(
             listen="127.0.0.1:%socks_port%",
@@ -465,9 +473,10 @@ def gen_clients(server_addr: str, user: User, server_config: ServerConfig, proje
     # https://matsuridayo.github.io/n-extra_core/
     nekoray = NekoRayConfig.from_server(user, server_config, server_addr, server_port, server_ip)
     nekoray.to_json(project.client_nekoray_config)
+    neko_server_addr, _ = nekoray.server.split(":")
     print(
         TEMPLATE_PRINT_NEKORAY.format(
-            server_addr=server_addr, listen_port=server_port, nekoray_config=nekoray.showcase
+            server_addr=neko_server_addr, listen_port=server_port, nekoray_config=nekoray.showcase
         )
     )
 
@@ -534,7 +543,9 @@ class Scaffold:
             exec_start=f"{project.juicity_executable} run -c {project.server_config}",
             working_directory=f"{project.workstation}",
         )
-        juicity = JuicityService.build_from_template(path=project.juicity_service, template=template)
+        juicity = JuicityService.build_from_template(
+            path=project.juicity_service, template=template
+        )
 
         logging.info(f"正在下载 juicity-server")
         juicity.download_juicity_server(project.workstation)
