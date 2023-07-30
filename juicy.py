@@ -396,8 +396,8 @@ class NekoRayConfig:
     Apply on the NekoRay(v3.8+)
     """
 
-    listen: str
     server: str
+    listen: str
     uuid: str
     password: str
     sni: str | None = None
@@ -415,8 +415,8 @@ class NekoRayConfig:
         server_ip: str,
     ):
         return cls(
-            listen="127.0.0.1:%socks_port%",
             server=f"{server_ip}:{server_port}",
+            listen="127.0.0.1:%socks_port%",
             uuid=user.username,
             password=user.password,
             sni=server_addr,
