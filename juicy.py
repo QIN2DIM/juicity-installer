@@ -435,8 +435,26 @@ class NekoRayConfig:
     def showcase(self) -> str:
         return json.dumps(self.__dict__, indent=4, ensure_ascii=True)
 
+    @property
+    def sharelink(self) -> str:
+        sl = (
+            f"juicity://{self.uuid}:{self.password}@{self.server}"
+            f"?congestion_control={self.congestion_control}"
+            f"&allow_insecure={int(self.allow_insecure)}"
+        )
+        if self.sni:
+            sl += f"&sni={self.sni}"
+        return sl
+
+    @property
+    def serv_peer(self) -> Tuple[str, str]:
+        serv_addr, serv_port = self.server.split(":")
+        return serv_addr, serv_port
+
 
 # =================================== DataModel ===================================
+
+
 TEMPLATE_PRINT_NEKORAY = """
 \033[36m--> NekoRay 自定义核心配置\033[0m
 # 名称：(custom)
@@ -451,6 +469,11 @@ TEMPLATE_PRINT_NEKORAY = """
 TEMPLATE_PRINT_META = """
 \033[36m--> Clash.Meta 配置文件输出路径\033[0m
 {meta_path}
+"""
+
+TEMPLATE_PRINT_SHARELINK = """
+\033[36m--> Juicity 通用订阅\033[0m
+\033[34m{sharelink}\033[0m
 """
 
 
@@ -473,10 +496,11 @@ def gen_clients(server_addr: str, user: User, server_config: ServerConfig, proje
     # https://matsuridayo.github.io/n-extra_core/
     nekoray = NekoRayConfig.from_server(user, server_config, server_addr, server_port, server_ip)
     nekoray.to_json(project.client_nekoray_config)
-    neko_server_addr, _ = nekoray.server.split(":")
+    serv_addr, _ = nekoray.serv_peer
+    print(TEMPLATE_PRINT_SHARELINK.format(sharelink=nekoray.sharelink))
     print(
         TEMPLATE_PRINT_NEKORAY.format(
-            server_addr=neko_server_addr, listen_port=server_port, nekoray_config=nekoray.showcase
+            server_addr=serv_addr, listen_port=server_port, nekoray_config=nekoray.showcase
         )
     )
 
@@ -592,11 +616,12 @@ class Scaffold:
                 logging.error(f"❌ 客户端配置文件不存在 - path={project.client_nekoray_config}")
             else:
                 nekoray = NekoRayConfig.from_json(project.client_nekoray_config)
-                server_addr, server_port = nekoray.server.split(":")
+                serv_addr, serv_port = nekoray.serv_peer
+                print(TEMPLATE_PRINT_SHARELINK.format(sharelink=nekoray.sharelink))
                 print(
                     TEMPLATE_PRINT_NEKORAY.format(
-                        server_addr=server_addr,
-                        listen_port=server_port,
+                        server_addr=serv_addr,
+                        listen_port=serv_port,
                         nekoray_config=nekoray.showcase,
                     )
                 )
