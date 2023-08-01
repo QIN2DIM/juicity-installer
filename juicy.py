@@ -266,6 +266,10 @@ class JuicityService:
         logging.info("停止系统服务")
         os.system(f"systemctl stop {self.name}")
 
+    def restart(self):
+        logging.info("重启系统服务")
+        os.system(f"systemctl daemon-reload && systemctl restart {self.name}")
+
     def status(self) -> Tuple[bool, str]:
         result = subprocess.run(
             f"systemctl is-active {self.name}".split(), capture_output=True, text=True
@@ -496,6 +500,21 @@ def _validate_domain(domain: str | None) -> Union[NoReturn, Tuple[str, str]]:
     sys.exit()
 
 
+def recv_stream(script: str, pipe: Literal["stdout", "stderr"] = "stdout") -> str:
+    p = subprocess.Popen(
+        script.split(),
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=True,
+        text=True,
+    )
+    if pipe == "stdout":
+        return p.stdout.read().strip()
+    if pipe == "stderr":
+        return p.stderr.read().strip()
+
+
 class Scaffold:
     @staticmethod
     def install(params: argparse.Namespace):
@@ -600,6 +619,27 @@ class Scaffold:
         elif params.v2ray:
             logging.warning("Unimplemented feature")
 
+    @staticmethod
+    def service_relay(cmd: str):
+        project = Project()
+        juicity = JuicityService.build_from_template(path=project.juicity_service)
+
+        if cmd == "status":
+            active = recv_stream(f"systemctl is-active {juicity.name}")
+            logging.info(f"status - {active}")
+            version = recv_stream(f"{project.juicity_executable} -v")
+            logging.info(f"version - {version}")
+        elif cmd == "log":
+            # FIXME unknown syslog
+            syslog = recv_stream(f"journalctl -u {juicity.name} -f -o cat")
+            print(syslog)
+        elif cmd == "start":
+            juicity.start()
+        elif cmd == "stop":
+            juicity.stop()
+        elif cmd == "restart":
+            juicity.restart()
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Juicity Scaffold (Python3.8+)")
@@ -616,6 +656,12 @@ if __name__ == "__main__":
     check_parser.add_argument("--clash", action="store_true", help="show Clash.Meta config")
     check_parser.add_argument("--v2ray", action="store_true", help="show v2rayN config")
 
+    status_parser = subparsers.add_parser("status", help="Check juicity-service status")
+    log_parser = subparsers.add_parser("log", help="Check juicity-service syslog")
+    start_parser = subparsers.add_parser("start", help="Start juicity-service")
+    stop_parser = subparsers.add_parser("stop", help="Stop juicity-service")
+    restart_parser = subparsers.add_parser("restart", help="restart juicity-service")
+
     args = parser.parse_args()
     command = args.command
 
@@ -626,5 +672,7 @@ if __name__ == "__main__":
             Scaffold.remove(params=args)
         elif command == "check":
             Scaffold.check(params=args)
+        elif command in ["status", "log", "start", "stop", "restart"]:
+            Scaffold.service_relay(command)
         else:
             parser.print_help()
