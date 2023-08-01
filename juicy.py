@@ -171,6 +171,11 @@ class Project:
             text = text.replace(ck, "")
         self.path_bash_aliases.write_text(text, encoding="utf8")
 
+    @staticmethod
+    def reset_shell() -> NoReturn:
+        # Reload Linux SHELL and refresh alias values
+        os.execl(os.environ["SHELL"], "bash", "-l")
+
 
 @dataclass
 class Certificate:
@@ -589,8 +594,9 @@ class Scaffold:
         # 在控制台输出客户端配置
         if response is True:
             gen_clients(domain, user, server_config, project)
+            project.reset_shell()
         else:
-            logging.info(f"{text}")
+            logging.info(f"服务启动失败 - status={text}")
 
     @staticmethod
     def remove(params: argparse.Namespace):
@@ -608,6 +614,8 @@ class Scaffold:
         # 关停进程，注销系统服务，移除工作空间
         service = JuicityService.build_from_template(project.juicity_service)
         service.remove(project.workstation)
+
+        project.reset_shell()
 
     @staticmethod
     def check(params: argparse.Namespace):
