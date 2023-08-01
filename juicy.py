@@ -59,47 +59,6 @@ WorkingDirectory={working_directory}
 WantedBy=multi-user.target
 """
 
-# https://adguard-dns.io/kb/zh-CN/general/dns-providers
-# https://github.com/MetaCubeX/Clash.Meta/blob/53f9e1ee7104473da2b4ff5da29965563084482d/config/config.go#L891
-TEMPLATE_META_CONFIG = """
-dns:
-  enable: true
-  enhanced-mode: fake-ip
-  nameserver:
-    - "https://dns.google/dns-query#PROXY"
-    - "https://security.cloudflare-dns.com/dns-query#PROXY"
-    - "quic://dns.adguard-dns.com"
-  proxy-server-nameserver:
-    - "https://223.5.5.5/dns-query"
-  nameserver-policy:
-    "geosite:cn":
-      - "https://223.5.5.5/dns-query"
-      # - system
-rules:
-  - GEOSITE,category-scholar-!cn,PROXY
-  - GEOSITE,category-ads-all,REJECT
-  - GEOSITE,youtube,PROXY
-  - GEOSITE,google,PROXY
-  - GEOSITE,cn,DIRECT
-  - GEOSITE,private,DIRECT
-  # - GEOSITE,tracker,DIRECT
-  - GEOSITE,steam@cn,DIRECT
-  - GEOSITE,category-games@cn,DIRECT
-  - GEOSITE,geolocation-!cn,PROXY
-  - GEOIP,private,DIRECT,no-resolve
-  - GEOIP,telegram,PROXY
-  - GEOIP,CN,DIRECT
-  - DST-PORT,80/8080/443/8443,PROXY
-  - MATCH,DIRECT
-"""
-
-TEMPLATE_META_PROXY_ADDONS = """
-proxies:
-  - {proxy}
-proxy-groups:
-  - {proxy_group}
-"""
-
 
 @dataclass
 class Project:
@@ -108,12 +67,12 @@ class Project:
     server_config = workstation.joinpath("server.json")
 
     client_nekoray_config = workstation.joinpath("nekoray_config.json")
-    client_meta_config = workstation.joinpath("meta_config.yaml")
 
     juicity_service = Path("/etc/systemd/system/juicity.service")
 
     # 设置别名
-    path_bash_aliases = Path("/root/.bash_aliases")
+    root = Path(os.path.expanduser("~"))
+    path_bash_aliases = root.joinpath(".bash_aliases")
     _remote_command = "python3 <(curl -fsSL https://ros.services/juicy.py)"
     _alias = "juicy"
 
@@ -158,12 +117,13 @@ class Project:
 
     @property
     def alias(self):
+        # redirect to https://raw.githubusercontent.com/QIN2DIM/juicity-installer/main/juicy.py
         return f"alias {self._alias}='{self._remote_command}'"
 
     def set_alias(self):
         with open(self.path_bash_aliases, "a", encoding="utf8") as file:
             file.write(f"\n{self.alias}\n")
-        logging.info(f"✅ 你可以在重启会话后通过别名唤起脚本 - alias={self._alias}")
+        logging.info(f"✅ 现在你可以通过别名唤起脚本 - alias={self._alias}")
 
     def remove_alias(self):
         text = self.path_bash_aliases.read_text(encoding="utf8")
@@ -267,7 +227,7 @@ class CertBot:
 
 @dataclass
 class JuicityService:
-    path: str
+    path: Path
     name: str = "juicity"
 
     @classmethod
@@ -275,7 +235,7 @@ class JuicityService:
         if template:
             path.write_text(template, encoding="utf8")
             os.system("systemctl daemon-reload")
-        return cls(path=f"{path}")
+        return cls(path=path)
 
     def download_juicity_server(self, workstation: Path):
         """下载的是 .zip 文件"""
@@ -294,7 +254,7 @@ class JuicityService:
             return self.download_juicity_server(workstation)
         else:
             os.system(f"chmod +x {ex_path}")
-            logging.info(f"授予执行权限 - {ex_path=}")
+            logging.info(f"授予执行权限 - ex_path={ex_path}")
 
     def start(self):
         """部署服务之前需要先初始化服务端配置并将其写到工作空间"""
@@ -327,7 +287,8 @@ class JuicityService:
         os.system("pkill juicity-server")
 
         logging.info("移除系统服务配置文件")
-        os.remove(self.path)
+        if self.path.exists():
+            os.remove(self.path)
 
         logging.info("移除工作空间")
         shutil.rmtree(workstation)
@@ -471,15 +432,22 @@ TEMPLATE_PRINT_NEKORAY = """
 {nekoray_config}
 """
 
-TEMPLATE_PRINT_META = """
-\033[36m--> Clash.Meta 配置文件输出路径\033[0m
-{meta_path}
-"""
-
 TEMPLATE_PRINT_SHARELINK = """
 \033[36m--> Juicity 通用订阅\033[0m
 \033[34m{sharelink}\033[0m
 """
+
+
+class Template:
+    @staticmethod
+    def print_nekoray(nekoray: NekoRayConfig):
+        serv_addr, serv_port = nekoray.serv_peer
+        print(TEMPLATE_PRINT_SHARELINK.format(sharelink=nekoray.sharelink))
+        print(
+            TEMPLATE_PRINT_NEKORAY.format(
+                server_addr=serv_addr, listen_port=serv_port, nekoray_config=nekoray.showcase
+            )
+        )
 
 
 def gen_clients(server_addr: str, user: User, server_config: ServerConfig, project: Project):
@@ -501,13 +469,7 @@ def gen_clients(server_addr: str, user: User, server_config: ServerConfig, proje
     # https://matsuridayo.github.io/n-extra_core/
     nekoray = NekoRayConfig.from_server(user, server_config, server_addr, server_port, server_ip)
     nekoray.to_json(project.client_nekoray_config)
-    serv_addr, _ = nekoray.serv_peer
-    print(TEMPLATE_PRINT_SHARELINK.format(sharelink=nekoray.sharelink))
-    print(
-        TEMPLATE_PRINT_NEKORAY.format(
-            server_addr=serv_addr, listen_port=server_port, nekoray_config=nekoray.showcase
-        )
-    )
+    Template.print_nekoray(nekoray)
 
 
 def _validate_domain(domain: str | None) -> Union[NoReturn, Tuple[str, str]]:
@@ -624,15 +586,7 @@ class Scaffold:
                 logging.error(f"❌ 客户端配置文件不存在 - path={project.client_nekoray_config}")
             else:
                 nekoray = NekoRayConfig.from_json(project.client_nekoray_config)
-                serv_addr, serv_port = nekoray.serv_peer
-                print(TEMPLATE_PRINT_SHARELINK.format(sharelink=nekoray.sharelink))
-                print(
-                    TEMPLATE_PRINT_NEKORAY.format(
-                        server_addr=serv_addr,
-                        listen_port=serv_port,
-                        nekoray_config=nekoray.showcase,
-                    )
-                )
+                Template.print_nekoray(nekoray)
 
         project = Project()
 
