@@ -1,4 +1,4 @@
-# Juicy
+# Juicy <a href = "https://t.me/+9HKsbFCuY4U3NmQx"><img src="https://img.shields.io/static/v1?style=social&logo=telegram&label=chat&message=studio" ></a>
 
 Juicy 用于快速部署 [Juicity-server](https://github.com/juicity/juicity) 并输出客户端最佳实践配置。只需 5s 即可完成全自动部署，开箱即用！
 
