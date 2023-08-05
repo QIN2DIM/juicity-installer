@@ -63,12 +63,12 @@ WantedBy=multi-user.target
 @dataclass
 class Project:
     workstation = Path("/home/juicity")
-    juicity_executable = workstation.joinpath("juicity-server")
+    executable = workstation.joinpath("juicity-server")
     server_config = workstation.joinpath("server.json")
 
     client_nekoray_config = workstation.joinpath("nekoray_config.json")
 
-    juicity_service = Path("/etc/systemd/system/juicity.service")
+    service = Path("/etc/systemd/system/juicity.service")
 
     # 设置别名
     root = Path(os.path.expanduser("~"))
@@ -135,6 +135,13 @@ class Project:
     def reset_shell() -> NoReturn:
         # Reload Linux SHELL and refresh alias values
         os.execl(os.environ["SHELL"], "bash", "-l")
+
+    @property
+    def systemd_template(self) -> str:
+        return TEMPLATE_SERVICE.format(
+            exec_start=f"{self.executable} run -c {self.server_config}",
+            working_directory=f"{self.workstation}",
+        )
 
 
 @dataclass
@@ -226,7 +233,7 @@ class CertBot:
 
 
 @dataclass
-class JuicityService:
+class Service:
     path: Path
     name: str = "juicity"
 
@@ -237,8 +244,7 @@ class JuicityService:
             os.system("systemctl daemon-reload")
         return cls(path=path)
 
-    def download_juicity_server(self, workstation: Path):
-        """下载的是 .zip 文件"""
+    def download_server(self, workstation: Path):
         zip_path = workstation.joinpath(URL.split("/")[-1])
         ex_path = workstation.joinpath("juicity-server")
 
@@ -251,7 +257,7 @@ class JuicityService:
             logging.info("服务正忙，尝试停止任务...")
             self.stop()
             time.sleep(0.5)
-            return self.download_juicity_server(workstation)
+            return self.download_server(workstation)
         else:
             os.system(f"chmod +x {ex_path}")
             logging.info(f"授予执行权限 - ex_path={ex_path}")
@@ -523,7 +529,7 @@ class Scaffold:
         3. 初始化 Project 环境对象
         4. 初始化 server config
         5. 初始化 client config
-        6. 生成 nekoray juicity config 配置信息
+        6. 生成 client config 配置信息
         :param params:
         :return:
         """
@@ -549,16 +555,12 @@ class Scaffold:
 
         # 初始化系统服务配置
         project.server_ip = server_ip
-        template = TEMPLATE_SERVICE.format(
-            exec_start=f"{project.juicity_executable} run -c {project.server_config}",
-            working_directory=f"{project.workstation}",
-        )
-        juicity = JuicityService.build_from_template(
-            path=project.juicity_service, template=template
+        service = Service.build_from_template(
+            path=project.service, template=project.systemd_template
         )
 
         logging.info(f"正在下载 juicity-server")
-        juicity.download_juicity_server(project.workstation)
+        service.download_server(project.workstation)
 
         logging.info("正在生成默认的服务端配置")
         server_config = ServerConfig.from_automation(
@@ -567,10 +569,10 @@ class Scaffold:
         server_config.to_json(project.server_config)
 
         logging.info("正在部署系统服务")
-        juicity.start()
+        service.start()
 
         logging.info("正在检查服务状态")
-        (response, text) = juicity.status()
+        (response, text) = service.status()
 
         # 在控制台输出客户端配置
         if response is True:
@@ -593,7 +595,7 @@ class Scaffold:
         CertBot(domain).remove()
 
         # 关停进程，注销系统服务，移除工作空间
-        service = JuicityService.build_from_template(project.juicity_service)
+        service = Service.build_from_template(project.service)
         service.remove(project.workstation)
 
         project.reset_shell()
@@ -622,23 +624,23 @@ class Scaffold:
     @staticmethod
     def service_relay(cmd: str):
         project = Project()
-        juicity = JuicityService.build_from_template(path=project.juicity_service)
+        service = Service.build_from_template(path=project.service)
 
         if cmd == "status":
-            active = recv_stream(f"systemctl is-active {juicity.name}")
+            active = recv_stream(f"systemctl is-active {service.name}")
             logging.info(f"status - {active}")
-            version = recv_stream(f"{project.juicity_executable} -v")
+            version = recv_stream(f"{project.executable} -v")
             logging.info(f"version - {version}")
         elif cmd == "log":
             # FIXME unknown syslog
-            syslog = recv_stream(f"journalctl -u {juicity.name} -f -o cat")
+            syslog = recv_stream(f"journalctl -u {service.name} -f -o cat")
             print(syslog)
         elif cmd == "start":
-            juicity.start()
+            service.start()
         elif cmd == "stop":
-            juicity.stop()
+            service.stop()
         elif cmd == "restart":
-            juicity.restart()
+            service.restart()
 
 
 if __name__ == "__main__":
