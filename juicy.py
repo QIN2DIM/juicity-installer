@@ -72,7 +72,7 @@ class Project:
 
     # 设置别名
     root = Path(os.path.expanduser("~"))
-    path_bash_aliases = root.joinpath(".bash_aliases")
+    path_bash_aliases = root.joinpath(".bashrc")
     _remote_command = "python3 <(curl -fsSL https://ros.services/juicy.py)"
     _alias = "juicy"
 
@@ -121,15 +121,26 @@ class Project:
         return f"alias {self._alias}='{self._remote_command}'"
 
     def set_alias(self):
+        # Avoid adding `juicy` alias repeatedly
+        if self.path_bash_aliases.exists():
+            pre_text = self.path_bash_aliases.read_text(encoding="utf8")
+            for ck in [f"\n{self.alias}\n", f"\n{self.alias}", f"{self.alias}\n", self.alias]:
+                if ck in pre_text:
+                    return
+        # New `juicy` alias record
         with open(self.path_bash_aliases, "a", encoding="utf8") as file:
             file.write(f"\n{self.alias}\n")
         logging.info(f"✅ 现在你可以通过别名唤起脚本 - alias={self._alias}")
 
     def remove_alias(self):
-        text = self.path_bash_aliases.read_text(encoding="utf8")
-        for ck in [f"\n{self.alias}\n", f"\n{self.alias}", f"{self.alias}\n", self.alias]:
-            text = text.replace(ck, "")
-        self.path_bash_aliases.write_text(text, encoding="utf8")
+        histories = [self.root.joinpath(".bash_aliases"), self.path_bash_aliases]
+        for hp in histories:
+            if not hp.exists():
+                continue
+            text = hp.read_text(encoding="utf8")
+            for ck in [f"\n{self.alias}\n", f"\n{self.alias}", f"{self.alias}\n", self.alias]:
+                text = text.replace(ck, "")
+            hp.write_text(text, encoding="utf8")
 
     @staticmethod
     def reset_shell() -> NoReturn:
@@ -449,37 +460,49 @@ TEMPLATE_PRINT_SHARELINK = """
 
 
 class Template:
-    @staticmethod
-    def print_nekoray(nekoray: NekoRayConfig):
-        serv_addr, serv_port = nekoray.serv_peer
-        print(TEMPLATE_PRINT_SHARELINK.format(sharelink=nekoray.sharelink))
-        print(
-            TEMPLATE_PRINT_NEKORAY.format(
-                server_addr=serv_addr, listen_port=serv_port, nekoray_config=nekoray.showcase
-            )
+    def __init__(self, project: Project, mode: Literal["install", "check"] = "check"):
+        self.project = project
+        self.mode = mode
+
+    def gen_clients(self, server_addr: str, user: User, server_config: ServerConfig):
+        logging.info("正在生成客户端配置文件")
+        project = self.project
+
+        # 生成客户端通用实例
+        server_ip, server_port = project.server_ip, project.server_port
+
+        # 生成 NekoRay 客户端配置实例
+        # https://matsuridayo.github.io/n-extra_core/
+        nekoray = NekoRayConfig.from_server(
+            user, server_config, server_addr, server_port, server_ip
         )
+        nekoray.to_json(project.client_nekoray_config)
 
+    def print_nekoray(self):
+        if not self.project.client_nekoray_config.exists():
+            logging.error(f"❌ 客户端配置文件不存在 - path={self.project.client_nekoray_config}")
+        else:
+            nekoray = NekoRayConfig.from_json(self.project.client_nekoray_config)
+            serv_addr, serv_port = nekoray.serv_peer
+            print(TEMPLATE_PRINT_SHARELINK.format(sharelink=nekoray.sharelink))
+            print(
+                TEMPLATE_PRINT_NEKORAY.format(
+                    server_addr=serv_addr, listen_port=serv_port, nekoray_config=nekoray.showcase
+                )
+            )
 
-def gen_clients(server_addr: str, user: User, server_config: ServerConfig, project: Project):
-    """
-    client: Literal["NekoRay", "v2rayN", "Meta"]
-
-    :param server_addr:
-    :param user:
-    :param server_config:
-    :param project:
-    :return:
-    """
-    logging.info("正在生成客户端配置文件")
-
-    # 生成客户端通用实例
-    server_ip, server_port = project.server_ip, project.server_port
-
-    # 生成 NekoRay 客户端配置实例
-    # https://matsuridayo.github.io/n-extra_core/
-    nekoray = NekoRayConfig.from_server(user, server_config, server_addr, server_port, server_ip)
-    nekoray.to_json(project.client_nekoray_config)
-    Template.print_nekoray(nekoray)
+    def parse(self, params: argparse):
+        show_all = not any([params.nekoray])
+        if show_all:
+            self.print_nekoray()
+        elif params.nekoray:
+            self.print_nekoray()
+        elif params.clash:
+            logging.warning("Unimplemented feature")
+        elif params.singbox:
+            logging.warning("Unimplemented feature")
+        elif params.v2ray:
+            logging.warning("Unimplemented feature")
 
 
 def _validate_domain(domain: str | None) -> Union[NoReturn, Tuple[str, str]]:
@@ -494,11 +517,11 @@ def _validate_domain(domain: str | None) -> Union[NoReturn, Tuple[str, str]]:
     try:
         server_ip = socket.getaddrinfo(domain, None)[-1][4][0]
     except socket.gaierror:
-        logging.error(f"域名不可达或拼写错误的域名 - {domain=}")
+        logging.error(f"域名不可达或拼写错误的域名 - domain={domain}")
     else:
         my_ip = request.urlopen("http://ifconfig.me/ip").read().decode("utf8")
         if my_ip != server_ip:
-            logging.error(f"你的主机外网IP与域名解析到的IP不一致 - {my_ip=} {domain=} {server_ip=}")
+            logging.error(f"你的主机外网IP与域名解析到的IP不一致 - my_ip={my_ip} domain={domain} server_ip={server_ip}")
         else:
             return domain, server_ip
 
@@ -534,7 +557,7 @@ class Scaffold:
         :return:
         """
         (domain, server_ip) = _validate_domain(params.domain)
-        logging.info(f"域名解析成功 - {domain=}")
+        logging.info(f"域名解析成功 - domain={domain}")
 
         # 初始化证书对象
         cert = Certificate(domain)
@@ -576,7 +599,9 @@ class Scaffold:
 
         # 在控制台输出客户端配置
         if response is True:
-            gen_clients(domain, user, server_config, project)
+            t = Template(project, mode="install")
+            t.gen_clients(domain, user, server_config)
+            t.parse(params)
             project.reset_shell()
         else:
             logging.info(f"服务启动失败 - status={text}")
@@ -601,25 +626,9 @@ class Scaffold:
         project.reset_shell()
 
     @staticmethod
-    def check(params: argparse.Namespace):
-        def print_nekoray():
-            if not project.client_nekoray_config.exists():
-                logging.error(f"❌ 客户端配置文件不存在 - path={project.client_nekoray_config}")
-            else:
-                nekoray = NekoRayConfig.from_json(project.client_nekoray_config)
-                Template.print_nekoray(nekoray)
-
+    def check(params: argparse.Namespace, mode: Literal["install", "check"] = "check"):
         project = Project()
-
-        show_all = not any([params.clash, params.nekoray, params.v2ray])
-        if show_all:
-            print_nekoray()
-        elif params.nekoray:
-            print_nekoray()
-        elif params.clash:
-            logging.warning("Unimplemented feature")
-        elif params.v2ray:
-            logging.warning("Unimplemented feature")
+        Template(project, mode).parse(params)
 
     @staticmethod
     def service_relay(cmd: str):
@@ -654,15 +663,18 @@ if __name__ == "__main__":
     remove_parser.add_argument("-d", "--domain", type=str, help="传参指定域名，否则需要在运行脚本后以交互的形式输入")
 
     check_parser = subparsers.add_parser("check", help="Print client configuration")
-    check_parser.add_argument("--nekoray", action="store_true", help="show NekoRay config")
-    check_parser.add_argument("--clash", action="store_true", help="show Clash.Meta config")
-    check_parser.add_argument("--v2ray", action="store_true", help="show v2rayN config")
 
-    status_parser = subparsers.add_parser("status", help="Check juicity-service status")
-    log_parser = subparsers.add_parser("log", help="Check juicity-service syslog")
-    start_parser = subparsers.add_parser("start", help="Start juicity-service")
-    stop_parser = subparsers.add_parser("stop", help="Stop juicity-service")
-    restart_parser = subparsers.add_parser("restart", help="restart juicity-service")
+    status_parser = subparsers.add_parser("status", help="Check tuic-service status")
+    log_parser = subparsers.add_parser("log", help="Check tuic-service syslog")
+    start_parser = subparsers.add_parser("start", help="Start tuic-service")
+    stop_parser = subparsers.add_parser("stop", help="Stop tuic-service")
+    restart_parser = subparsers.add_parser("restart", help="restart tuic-service")
+
+    for c in [check_parser, install_parser]:
+        c.add_argument("--nekoray", action="store_true", help="show NekoRay config")
+        c.add_argument("--clash", action="store_true", help="show Clash.Meta config")
+        c.add_argument("--v2ray", action="store_true", help="show v2rayN config")
+        c.add_argument("--singbox", action="store_true", help="show sing-box config")
 
     args = parser.parse_args()
     command = args.command
