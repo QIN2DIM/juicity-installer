@@ -4,9 +4,20 @@ Juicy 用于快速部署 [Juicity-server](https://github.com/juicity/juicity) �
 
 ## Prerequisites
 
-- Python3.8+
+- Python3.6+
 
-  常见的操作系统镜像自带 Python3，如 Ubuntu20+，Debian10+ 
+  常见的操作系统镜像自带 Python3，如：
+  
+  | OS Release       | Default Python version    |
+  | ---------------- | ------------------------- |
+  | Ubuntu 18.04     | Python 3.6                |
+  | Debian 10        | Python 3.7                |
+  | Fedora 28        | Python 3.6                |
+  | openSUSE Leap 15 | Python 3.6                |
+  | Arch Linux       | Python 3.7                |
+  | Kali Linux       | Python 2.7 and Python 3.6 |
+  | Alpine Linux     | Python 2.7 and Python 3.6 |
+  | CentOS 8         | Python 3.6                |
 - 在管理员权限下运行
 - 提前为你的服务器解析一个域名 A 纪录
 
