@@ -521,7 +521,9 @@ def _validate_domain(domain: str | None) -> Union[NoReturn, Tuple[str, str]]:
     else:
         my_ip = request.urlopen("http://ifconfig.me/ip").read().decode("utf8")
         if my_ip != server_ip:
-            logging.error(f"你的主机外网IP与域名解析到的IP不一致 - my_ip={my_ip} domain={domain} server_ip={server_ip}")
+            logging.error(
+                f"你的主机外网IP与域名解析到的IP不一致 - my_ip={my_ip} domain={domain} server_ip={server_ip}"
+            )
         else:
             return domain, server_ip
 
