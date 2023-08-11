@@ -1,0 +1,20 @@
+- name: Deploy tuic-server on single control node
+  hosts: localhost
+  become: true
+  vars:
+    ansible_connection: local
+  tasks:
+    - name: Install certbot with package manager
+      package:
+        name: certbot
+        state: latest
+    - name: Juicy GET
+      get_url:
+        url: https://raw.githubusercontent.com/QIN2DIM/juicity-installer/main/juicy.py
+        dest: /tmp/juicy.py
+    - name: Juicy install
+      command: "python3 /tmp/juicy.py install -d {{ juicity_domain }}"
+      register: install_result
+    - name: Check result of local deployment
+      debug:
+        var: install_result.stdout_lines
